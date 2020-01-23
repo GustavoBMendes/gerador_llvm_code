@@ -26,7 +26,8 @@
 %token PONTO_VIRGULA
 %right IGUAL
 %left MAIS MENOS
-%left VEZES DIVIDE  
+%left VEZES DIVIDE
+%precedence POTENCIA
 
 %type<a> iexp line
 
