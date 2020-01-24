@@ -306,7 +306,7 @@ void dumpast(struct ast *a, int level){
     return;
 
     /* expressions */
-  case '+': case '-': case '*': case '/': case '^': case 'L':
+  case '+': case '-': case '*': case '/': case '^':
     printf("binop %c\n", a->nodetype);
     dumpast(a->l, level);
     dumpast(a->r, level);
@@ -321,17 +321,96 @@ void dumpast(struct ast *a, int level){
   }
 }
 
+int cont_stmt = 0;
+char* type;
+//gerador de código llvm
+void code_llvm(struct ast *a){
+
+  if(!a) {
+    printf("NULL\n");
+    return;
+  }
+
+  switch(a->nodetype) {
+    /* constant */
+  case 'K':
+    fprintf(arq, "%4.4g", ((struct numval *)a)->number);
+    break;
+
+    /* name reference */
+  case 'N': if(((struct symref *)a)->s->flag == 0) yyerror("Variável '%s' sem valor.", ((struct symref *)a)->s->name);
+    printf("ref %s\n", ((struct symref *)a)->s->name); break;
+
+    /* assignment */
+  case '=':
+    
+    if(((struct symref *)a)->s->i == 1 && ((struct symref *)a)->s->f == 0){
+      fprintf(arq, "#%d = alloca i32, align 4\n", cont_stmt);
+      type = "i32";
+    }
+    else if(((struct symref *)a)->s->i == 0 && ((struct symref *)a)->s->f == 1){
+      fprintf(arq, "#%d = alloca float, align 4\n", cont_stmt);
+      type = "float";
+    }
+    a->ref = cont_stmt;
+    cont_stmt++;
+    fprintf(arq, "store %s ", type);
+    code_llvm( ((struct symasgn *)a)->v);
+    fprintf(arq, ", %s* #%d, align 4\n", type, a->ref);
+
+    return;
+
+    /* expressions */
+  case '+': case '-': case '*': case '/': case '^':
+    fprintf(arq, "#%d = add ", cont_stmt);
+    code_llvm(a->l);
+    code_llvm(a->r);
+    return;
+
+  case 'C': printf("call print\n");
+    code_llvm(a->r);
+    return;
+
+  default: printf("bad %c\n", a->nodetype);
+    return;
+  }
+}
+
+
+
 int main(int argc, char **argv){
 
-  if(argc > 1)
-    yyin = fopen(argv[1], "r");
+  char* nome_arq_entrada;
+
+  if(argc > 1){
+    if(argv[1] == "-a"){
+      yyin = fopen(argv[5], "r");
+      nome_arq_entrada = argv[5];
+      arq = fopen(argv[3], "w");
+    }
+    else{
+      yyin = fopen(argv[3], "r");
+      nome_arq_entrada = argv[3];
+      arq = fopen(argv[2], "w");
+    }
+  }
 
   else{
     printf("Forma de uso: ./front arquivo_entrada");
     return 0;
   }
 
+  fprintf(arq, "source_filename: '%s'\n", nome_arq_entrada);
+  fprintf(arq, "target datalayout = 'e-m:e-i64:64-f80:128-n8:16:32:64-S128'\n");
+  fprintf(arq, "target triple = 'x86_64-pc-linux-gnu'\n");
+  fprintf(arq, "\n");
+  fprintf(arq, "\ndefine void @main() #%d {\n", cont_stmt);
+  cont_stmt++;
+
   yyparse();
+  
+  fclose(arq);
+
   return 0;
 
 }

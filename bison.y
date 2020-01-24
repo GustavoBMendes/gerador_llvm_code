@@ -37,6 +37,7 @@
     entrada: 
             | entrada line PONTO_VIRGULA N_LINHA        {
                                                     dumpast($2, 0);
+                                                    code_llvm($2);
                                                     printf("= %4.4g\n> ", eval($2));
                                                     yylineno++;
                                                 }
@@ -46,7 +47,10 @@
     ;
 
     line: 
-        ID IGUAL iexp {$$ = newasgn($1, $3, 1); }
+        ID IGUAL iexp   {
+                            if(ti == 1)     $$ = newasgn($1, $3, 1);
+                            if(tf == 1)     $$ = newasgn($1, $3, 2);
+                        }
         | PRINT iexp    {$$ = newcall($1, $2); }
     ;
 
@@ -56,8 +60,8 @@
         | iexp DIVIDE iexp      {$$ = newast('/', $1, $3); }
         | iexp MAIS iexp        {$$ = newast('+', $1, $3); }
         | iexp MENOS iexp       {$$ = newast('-', $1, $3); }
-        | INTEIRO               {$$ = newnum($1, 1); } //valor 1 == tipo int
-        | REAL                  {$$ = newnum($1, 2); } //valor 2 == tipo float
+        | INTEIRO               {$$ = newnum($1, 1); ti = 1; tf = 0;} 
+        | REAL                  {$$ = newnum($1, 2); ti = 0; tf = 1;} 
         | ID                    {$$ = newref($1); }
         | E_PAR iexp D_PAR      {$$ = $2; }
         
