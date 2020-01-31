@@ -76,6 +76,10 @@ struct ast *newnum(double d, int t){
   a->nodetype = 'K';
   a->number = d;
   a->tipo = t;
+  if(t == 1)
+    a->strtype = "i32";
+  if(t == 2)
+    a->strtype = "float";
   
   return (struct ast *)a;
 }
@@ -118,6 +122,7 @@ struct ast *newasgn(struct symbol *s, struct ast *v, int tipo){
   if(tipo == 1 && s->flag == 0){ //tipo int
     s->i = 1;
     s->f = 0;
+    s->type = "i32";
     a->tipo = 1;
     v->i = 1;
     v->f = 0;
@@ -125,6 +130,7 @@ struct ast *newasgn(struct symbol *s, struct ast *v, int tipo){
   else if(tipo == 2 && s->flag == 0){ //tipo float
     s->i = 0;
     s->f = 1;
+    s->type = "float";
     a->tipo = 2;
     v->i = 0;
     v->f = 1;
@@ -137,6 +143,7 @@ struct ast *newasgn(struct symbol *s, struct ast *v, int tipo){
   }
 
   s->flag = 1;
+  s->alloc = 0;
   a->v = v;
 
   return (struct ast *)a;
@@ -241,33 +248,6 @@ double eval(struct ast *a){
   return v;
 }
 
-
-void treefree(struct ast *a) {
-  switch(a->nodetype) {
-
-    /* two subtrees */
-  case '+':
-  case '-':
-  case '*':
-  case '/':
-  case '^':
-    treefree(a->r);
-
-    /* no subtree */
-  case 'K': case 'N':
-    break;
-
-  case '=': case 'C':
-    free( ((struct symasgn *)a)->v);
-    break;
-
-  default: printf("internal error: free bad node %c\n", a->nodetype);
-  }	  
-  
-  free(a); /* always free the node itself */
-
-}
-
 void yyerror(char *s, ...){
   va_list ap;
   va_start(ap, s);
@@ -282,7 +262,7 @@ void yyerror(char *s, ...){
 //Analisador semântico
 void dumpast(struct ast *a, int level){
 
-  printf("%*s", 2*level, "");	/* indent to this level */
+  fprintf(tree_arq, "%*s", 2*level, "");	/* indent to this level */
   level++;
 
   if(!a) {
@@ -292,124 +272,277 @@ void dumpast(struct ast *a, int level){
 
   switch(a->nodetype) {
     /* constant */
-  case 'K': printf("number %4.4g\n", ((struct numval *)a)->number); 
+  case 'K': fprintf(tree_arq, "number %4.4g\n", ((struct numval *)a)->number); 
     break;
 
     /* name reference */
   case 'N': if(((struct symref *)a)->s->flag == 0) yyerror("Variável '%s' sem valor.", ((struct symref *)a)->s->name);
-    printf("ref %s\n", ((struct symref *)a)->s->name); break;
+    fprintf(tree_arq, "ref %s\n", ((struct symref *)a)->s->name); break;
 
     /* assignment */
   case '=': 
-    printf("= %s\n", ((struct symref *)a)->s->name);
+    fprintf(tree_arq, "= %s\n", ((struct symref *)a)->s->name);
     dumpast( ((struct symasgn *)a)->v, level);
     return;
 
     /* expressions */
   case '+': case '-': case '*': case '/': case '^':
-    printf("binop %c\n", a->nodetype);
+    fprintf(tree_arq, "binop %c\n", a->nodetype);
     dumpast(a->l, level);
     dumpast(a->r, level);
     return;
 
-  case 'C': printf("call print\n");
+  case 'C': fprintf(tree_arq,"call print\n");
     dumpast(a->r, level);
     return;
 
-  default: printf("bad %c\n", a->nodetype);
+  default: fprintf(tree_arq, "bad %c\n", a->nodetype);
     return;
   }
 }
 
 int cont_stmt = 0;
 char* type;
-//gerador de código llvm
-void code_llvm(struct ast *a){
+int ref_op = 0;
+int iprint = 0;
+int decl_pow = 0;
+int arqtree = 0;
 
-  if(!a) {
+void gera_llvm(struct ast *a){
+  
+  if(!a){
     printf("NULL\n");
     return;
   }
 
   switch(a->nodetype) {
-    /* constant */
-  case 'K':
-    fprintf(arq, "%4.4g", ((struct numval *)a)->number);
-    break;
+    // assignment 
+    case '=':
+      if(((struct symref *)a)->s->alloc == 0){
+          fprintf(arq, "\t\%%\%d = alloca %s, align 4\n", cont_stmt, ((struct symref *)a)->s->type);
 
-    /* name reference */
-  case 'N': if(((struct symref *)a)->s->flag == 0) yyerror("Variável '%s' sem valor.", ((struct symref *)a)->s->name);
-    printf("ref %s\n", ((struct symref *)a)->s->name); break;
+        ((struct symref *)a)->s->alloc = 1;
+        ((struct symref *)a)->s->ref = cont_stmt;
+        a->ref = cont_stmt;
+        cont_stmt++;
+      }
+      
+      double val = atribui(((struct symasgn *)a)->v, ((struct symref *)a)->s->type);
+      fprintf(arq, "\tstore %s %.4g, %s* \%%\%d, align 4\n", 
+      ((struct symref *)a)->s->type, val, ((struct symref *)a)->s->type, a->ref);
 
-    /* assignment */
-  case '=':
-    
-    if(((struct symref *)a)->s->i == 1 && ((struct symref *)a)->s->f == 0){
-      fprintf(arq, "#%d = alloca i32, align 4\n", cont_stmt);
-      type = "i32";
-    }
-    else if(((struct symref *)a)->s->i == 0 && ((struct symref *)a)->s->f == 1){
-      fprintf(arq, "#%d = alloca float, align 4\n", cont_stmt);
-      type = "float";
-    }
-    a->ref = cont_stmt;
-    cont_stmt++;
-    fprintf(arq, "store %s ", type);
-    code_llvm( ((struct symasgn *)a)->v);
-    fprintf(arq, ", %s* #%d, align 4\n", type, a->ref);
+      return;
 
-    return;
+    //print
+    case 'C': 
+      case_print(a->r);
+      fprintf(arq, "\t\%%\%d call %s (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.str, i32 0, i32 0), %s \%%\%d)\n"
+      , cont_stmt, type, type, cont_stmt-1);
+      cont_stmt++;
+      iprint = 1;
+      return;
 
-    /* expressions */
-  case '+': case '-': case '*': case '/': case '^':
-    fprintf(arq, "#%d = add ", cont_stmt);
-    code_llvm(a->l);
-    code_llvm(a->r);
-    return;
-
-  case 'C': printf("call print\n");
-    code_llvm(a->r);
-    return;
-
-  default: printf("bad %c\n", a->nodetype);
-    return;
+    default: printf("bad %c\n", a->nodetype);
+      return;
   }
+  return;
 }
 
+double case_print(struct ast *a){
 
+  double op1, op2, v;
+
+  if(!a){
+    printf("NULL\n");
+    return 0.0;
+  }
+
+  switch(a->nodetype){
+    case 'K':
+      v = ((struct numval *)a)->number;
+      type  = ((struct numval *)a)->strtype;
+      break;
+
+    case 'N':
+      type = ((struct symref *)a)->s->type;
+      fprintf(arq, "\t\%%\%d = load %s, %s* \%%\%d, align 4\n", cont_stmt, type, type, ((struct symref *)a)->s->ref);
+      cont_stmt++;
+      v = ((struct symref *)a)->s->value;
+      break;
+
+    case '+': 
+      op1 = case_print(a->l);
+      op2 = case_print(a->r);
+      v = op1 + op2;
+      fprintf(arq, "\t\%%\%d = add nsw %s %.4g, %.4g\n", cont_stmt, type, op1, op2);
+      cont_stmt++;
+      break;
+    
+    case '-': 
+      op1 = case_print(a->l);
+      op2 = case_print(a->r);
+      v = op1 - op2;
+      fprintf(arq, "\t\%%\%d = sub nsw %s %.4g, %.4g\n", cont_stmt, type, op1, op2);
+      cont_stmt++;
+      break;
+
+    case '*': 
+      op1 = case_print(a->l);
+      op2 = case_print(a->r);
+      v = op1 * op2;
+      fprintf(arq, "\t\%%\%d = mul nsw %s %.4g, %.4g\n", cont_stmt, type, op1, op2);
+      cont_stmt++;
+      break;
+    
+    case '/': 
+      op1 = case_print(a->l);
+      op2 = case_print(a->r);
+      v = op1 / op2;
+      fprintf(arq, "\t\%%\%d = div nsw %s %.4g, %.4g\n", cont_stmt, type, op1, op2);
+      cont_stmt++;
+      break;
+    
+    case '^':
+      op1 = case_print(a->l);
+      op2 = case_print(a->r);
+      v = pow(op1, op2);
+      fprintf(arq, "\t\%%\%d = call %s @pow(float %.4g, float %.4g\n)", cont_stmt, type, op1, op2);
+      cont_stmt++;
+      decl_pow = 1;
+      break;
+
+    default: 
+      printf("bad %c\n", a->nodetype);
+      break;
+  }
+  return v;
+}
+
+double atribui(struct ast *a, char* typ){
+  double v;
+  double op1;
+  double op2;
+
+  if(!a){
+    printf("NULL\n");
+    return 0.0;
+  }
+
+  switch(a->nodetype) {
+    // constant 
+    case 'K':
+      //fprintf(arq, "%4.4g", ((struct numval *)a)->number);
+      v = ((struct numval *)a)->number;
+      break;
+
+      // name reference 
+    case 'N':
+      fprintf(arq, "\t\%%\%d = load %s, %s* \%%\%d, align 4\n", cont_stmt, typ, typ, ((struct symref *)a)->s->ref);
+      cont_stmt++;
+      v = ((struct symref *)a)->s->value;
+      break;
+
+    case '+': 
+      op1 = atribui(a->l, typ);
+      op2 = atribui(a->r, typ);
+      v = op1 + op2;
+      fprintf(arq, "\t\%%\%d = add nsw %s %.4g, %.4g\n", cont_stmt, typ, op1, op2);
+      cont_stmt++;
+      break;
+    
+    case '-': 
+      op1 = atribui(a->l, typ);
+      op2 = atribui(a->r, typ);
+      v = op1 - op2;
+      fprintf(arq, "\t\%%\%d = sub nsw %s %.4g, %.4g\n", cont_stmt, typ, op1, op2);
+      cont_stmt++;
+      break;
+
+    case '*': 
+      op1 = atribui(a->l, typ);
+      op2 = atribui(a->r, typ);
+      v = op1 * op2;
+      fprintf(arq, "\t\%%\%d = mul nsw %s %.4g, %.4g\n", cont_stmt, typ, op1, op2);
+      cont_stmt++;
+      break;
+    
+    case '/': 
+      op1 = atribui(a->l, typ);
+      op2 = atribui(a->r, typ);
+      v = op1 / op2;
+      fprintf(arq, "\t\%%\%d = div nsw %s %.4g, %.4g\n", cont_stmt, typ, op1, op2);
+      cont_stmt++;
+      break;
+    
+    case '^':
+      op1 = atribui(a->l, typ);
+      op2 = atribui(a->r, typ);
+      v = pow(op1, op2);
+      fprintf(arq, "\t\%%\%d = call %s @pow(float %.4g, float %.4g\n)", cont_stmt, typ, op1, op2);
+      cont_stmt++;
+      decl_pow = 1;
+      break;
+
+    default: printf("bad %c\n", a->nodetype);
+      break;
+  }
+  return v;
+}
 
 int main(int argc, char **argv){
 
   char* nome_arq_entrada;
 
   if(argc > 1){
-    if(argv[1] == "-a"){
+    if(strcmp(argv[1], "-a") == 0){
       yyin = fopen(argv[5], "r");
       nome_arq_entrada = argv[5];
-      arq = fopen(argv[3], "w");
+      arq = fopen(argv[4], "w");
+      tree_arq = fopen(argv[2], "w");
+      arqtree = 1;
+    }
+    else if(strcmp(argv[1], "-h") == 0){
+      printf("Forma de uso: ./front -a teste.tree -o teste teste.calc\n");
+      printf("Onde: -a <YYYY> imprime a árvore sintática abstrata (opcional)\n");
+      printf("-o <XXXX> nome do arquivo de saída\n");
+      printf("-h ajuda\n");
+      return 0;
     }
     else{
       yyin = fopen(argv[3], "r");
       nome_arq_entrada = argv[3];
       arq = fopen(argv[2], "w");
+      arqtree = 0;
     }
   }
 
   else{
-    printf("Forma de uso: ./front arquivo_entrada");
+    printf("Forma de uso: ./front -a teste.tree -o teste teste.calc\n");
+    printf("Onde: -a <YYYY> imprime a árvore sintática abstrata (opcional)\n");
+    printf("-o <XXXX> nome do arquivo de saída\n");
+    printf("-h ajuda");
     return 0;
   }
-
+  char *txt = "%d %d\00";
   fprintf(arq, "source_filename: '%s'\n", nome_arq_entrada);
   fprintf(arq, "target datalayout = 'e-m:e-i64:64-f80:128-n8:16:32:64-S128'\n");
   fprintf(arq, "target triple = 'x86_64-pc-linux-gnu'\n");
+  fprintf(arq, "@.str = private unnamed_addr constant [6 x i8] c %s, align 1", txt);
   fprintf(arq, "\n");
-  fprintf(arq, "\ndefine void @main() #%d {\n", cont_stmt);
+  fprintf(arq, "\ndefine void @main() \%%\%d {\n", cont_stmt);
   cont_stmt++;
 
   yyparse();
   
+  fprintf(arq, "\tret void\n}\n\n");
+  if(iprint == 1)
+    fprintf(arq, "declare i32 @printf(i8*, ...) #1\n");
+  if(decl_pow == 1)
+    fprintf(arq, "declare dso_local float @pow(float, float) #1");
+
   fclose(arq);
+  if(arqtree == 1)
+    fclose(tree_arq);
 
   return 0;
 

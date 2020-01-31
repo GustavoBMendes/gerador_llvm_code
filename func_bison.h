@@ -3,8 +3,11 @@ struct symbol {		/* a variable name */
   char *name;
   double value;
   int flag;
+  int alloc;
+  int ref;
   int i;
   int f;
+  char *type;
   struct ast *func;	/* stmt for the function */
   struct symlist *syms; /* list of dummy args */
 };
@@ -38,6 +41,7 @@ struct numval {
   int nodetype;			/* type K */
   double number;
   int tipo;
+  char *strtype;
 };
 
 struct symref {
@@ -72,7 +76,12 @@ void yyerror(char *s, ...);
 extern int debug;
 void dumpast(struct ast *a, int level);
 void code_llvm(struct ast *a);
+void gera_llvm(struct ast *a);
+double atribui(struct ast *a, char* typ);
+double case_print(struct ast *a);
 
 FILE *arq;
+FILE *tree_arq;
 
+extern int arqtree;
 int ti, tf;
