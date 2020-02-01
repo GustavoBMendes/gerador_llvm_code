@@ -327,7 +327,7 @@ void gera_llvm(struct ast *a){
         cont_stmt++;
       }
       
-      double val = atribui(((struct symasgn *)a)->v, ((struct symref *)a)->s->type);
+      double val = ((struct symasgn *)a)->s->value = atribui(((struct symasgn *)a)->v, ((struct symref *)a)->s->type);
       fprintf(arq, "\tstore %s %.4g, %s* \%%\%d, align 4\n", 
       ((struct symref *)a)->s->type, val, ((struct symref *)a)->s->type, a->ref);
 
@@ -373,8 +373,8 @@ double case_print(struct ast *a){
     case '+': 
       op1 = case_print(a->l);
       op2 = case_print(a->r);
-      v = op1 + op2;
       fprintf(arq, "\t\%%\%d = add nsw %s %.4g, %.4g\n", cont_stmt, type, op1, op2);
+      v = op1 + op2;
       cont_stmt++;
       break;
     
@@ -406,7 +406,7 @@ double case_print(struct ast *a){
       op1 = case_print(a->l);
       op2 = case_print(a->r);
       v = pow(op1, op2);
-      fprintf(arq, "\t\%%\%d = call %s @pow(float %.4g, float %.4g\n)", cont_stmt, type, op1, op2);
+      fprintf(arq, "\t\%%\%d = call %s @pow(float %.4g, float %.4g)\n", cont_stmt, type, op1, op2);
       cont_stmt++;
       decl_pow = 1;
       break;
@@ -478,7 +478,7 @@ double atribui(struct ast *a, char* typ){
       op1 = atribui(a->l, typ);
       op2 = atribui(a->r, typ);
       v = pow(op1, op2);
-      fprintf(arq, "\t\%%\%d = call %s @pow(float %.4g, float %.4g\n)", cont_stmt, typ, op1, op2);
+      fprintf(arq, "\t\%%\%d = call %s @pow(float %.4g, float %.4g)\n", cont_stmt, typ, op1, op2);
       cont_stmt++;
       decl_pow = 1;
       break;

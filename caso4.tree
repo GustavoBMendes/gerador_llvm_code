@@ -1,0 +1,26 @@
+= a
+  binop +
+    number   20
+    number   15
+=   35
+> = c
+  number    5
+=    5
+> call print
+  ref a
+=   35
+> = b
+  binop +
+    binop +
+      binop +
+        number   30
+        number   15
+      ref c
+    ref a
+=   85
+> call print
+  binop +
+    ref a
+    ref b
+=  120
+> 

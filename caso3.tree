@@ -1,0 +1,8 @@
+call print
+  binop *
+    number    5
+    binop +
+      number    5
+      number    7
+=   60
+> 

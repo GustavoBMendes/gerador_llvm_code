@@ -1,0 +1,15 @@
+= a
+  number 10.2
+= 10.2
+> = b
+  number 10.5
+= 10.5
+> = c
+  binop +
+    ref a
+    ref b
+= 20.7
+> call print
+  ref c
+= 20.7
+> 

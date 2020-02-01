@@ -2,10 +2,12 @@
 
 void main(){
 	int a;
-	int b;
+	float b;
 	a = 10;
-	b = 20;
+	b = 20.5;
 	int c;
-	c = a + b;
-	printf(c);
+	c = a * 2;
+	printf("%f\n", b);
+	a = 20;
+	printf("5+5");
 }

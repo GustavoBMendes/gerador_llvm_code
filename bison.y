@@ -36,9 +36,11 @@
 %%
     entrada: 
             | entrada line PONTO_VIRGULA N_LINHA        {
-                                                    if(arqtree)    dumpast($2, 0);
+                                                    if(arqtree == 1){
+                                                        dumpast($2, 0);
+                                                        fprintf(tree_arq, "= %4.4g\n> ", eval($2));
+                                                    }
                                                     gera_llvm($2);
-                                                    fprintf(tree_arq, "= %4.4g\n> ", eval($2));
                                                     yylineno++;
                                                 }
 
